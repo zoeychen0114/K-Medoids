@@ -1,0 +1,120 @@
+import time
+import numpy as np
+import matplotlib as mpl
+mpl.rc("savefig", dpi=100) # Adjust for higher-resolution figures
+from PIL import Image
+from matplotlib.pyplot import imshow
+
+def read_img(path):
+    """
+    Read image and store it as an array, given the image path. 
+    Returns the 3 dimensional image array.
+    """
+    img = Image.open(path)
+    img_arr = np.array(img, dtype='int32')
+    img.close()
+    return img_arr
+
+def display_image(arr):
+    """
+    display the image
+    input : 3 dimensional array
+    """
+    arr = arr.astype(dtype='uint8')
+    img = Image.fromarray(arr, 'RGB')
+    imshow(np.asarray(img))
+
+def init_centers(X, k):
+    #Randomly samples k observations from X as centers.
+    samples = np.random.choice(len(X), size=k, replace=False)
+    return X[samples, :]
+
+def assign_cluster_labels (X, centers):
+    c2 = np.sum(np.power(centers, 2), axis=1, keepdims=True)
+    tmpdiff = 2 * np.dot(X, centers.T) - c2.T
+    labels = np.argmax(tmpdiff, axis=1)
+    return labels
+
+def kmedoids(X, k, starting_centers, max_steps, sampling_percentage):
+    if starting_centers is None:
+        centers = init_centers(X, k)
+    else:
+        centers = starting_centers
+        
+    labels = assign_cluster_labels (X, centers)
+    iter = 1
+    
+    while iter <= max_steps: 
+        #select samples for centroids by a certain percentage
+        samples_for_centroids = np.random.choice(len(X), size=int(sampling_percentage*len(X)), replace=False)
+        sampling = X[samples_for_centroids, :]
+        
+        for i in range(k):      
+            #filter all data points by labels
+            cluster = np.where(labels == i)[0]
+            #compute the total distance for the old clustering with Euclidean method
+            old_cost = np.linalg.norm(X[cluster]-centers[i], ord=2, axis=1).sum()
+            
+            #compute the total distance for the old clustering with Manhattan method
+            #old_cost = np.absolute(X[cluster]-centers[i]).sum()
+            
+            #compute the total distance for the old clustering with inf-distance method
+            #old_cost = np.max(X[cluster]-centers[i])
+            
+            #find the sampling data points with the i label
+            sampling_cluster = np.intersect1d(samples_for_centroids, cluster)
+            
+            #compute the total distance for the new clustering
+            distance = np.empty((len(sampling),1))
+            for j in range(len(sampling_cluster)):
+                #compute the total distance for the new clustering with Euclidean method
+                distance[j, :] = np.linalg.norm(sampling[j]-sampling, ord=2, axis=1).sum()
+                
+                #compute the total distance for the new clustering with Manhattan method
+                #distance[j, :] = np.absolute(sampling[j]-sampling).sum()
+                
+                #compute the total distance for the new clustering with inf-distance method
+                #distance[j, :] = np.max(sampling[j]-sampling)
+            
+            #delete rows with nan
+            distance_notnan = distance[np.logical_not(np.isnan(distance))]
+            
+            #find the new centroid by minimized distance
+            new_centroid = sampling[int(np.where(distance_notnan == np.amin(distance_notnan))[0][0])]
+            
+            #compute total distance with the new centroid in all data points
+            new_cost = np.linalg.norm(X[cluster]-new_centroid, ord=2, axis=1).sum()
+            
+            #compare new cost with old cost
+            if new_cost < old_cost:
+                centers[i,:] = new_centroid
+        labels = assign_cluster_labels (X, centers)   
+        print ("iteration", iter)
+        iter += 1
+    return labels
+
+img_arr = read_img("flower.jpg")
+display_image(img_arr)
+print("Shape of the matrix obtained by reading the image")
+print(img_arr.shape)
+
+img_reshaped = img_arr.reshape(img_arr.shape[0]*img_arr.shape[1], img_arr.shape[2])
+
+k=3
+
+tic = time.time()
+labels = kmedoids(img_reshaped, k, starting_centers=None, max_steps=10, sampling_percentage = 0.1)
+toc = time.time()
+print('Elapsed time is %f seconds \n' % float(toc - tic))
+
+centers = {}
+for j in range(k):
+    centers[j] = np.mean(img_reshaped[labels==j, :], axis=0)
+
+
+img_clustered = np.array([centers[i] for i in labels])
+
+r, c, l = img_arr.shape
+img_disp = np.reshape(img_clustered, (r, c, l), order="C")
+display_image(img_disp)
+
